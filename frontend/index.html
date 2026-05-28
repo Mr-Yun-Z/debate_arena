@@ -26,9 +26,13 @@
         <!-- ====== 辩论场视图 ====== -->
         <div v-if="view === 'arena'" class="arena-view">
             <!-- 顶部：议题输入 -->
-            <div class="topic-bar" v-if="!debate">
+            <div class="topic-bar game-start" v-if="!debate">
+                <div class="start-copy">
+                    <div class="start-title">开麦辩论局</div>
+                    <div class="start-subtitle">输入一个真实问题，让正反双方用大白话狠狠干一局。</div>
+                </div>
                 <div class="topic-input-group">
-                    <input v-model="topicInput" class="topic-input" placeholder="输入辩论议题，例如：人工智能是否会取代人类工作？"
+                    <input v-model="topicInput" class="topic-input" placeholder="比如：上海的 Java 工作现在还好找吗？"
                            @keyup.enter="createAndStart" maxlength="500">
                     <select v-model.number="maxRounds" class="rounds-select">
                         <option :value="3">3轮</option>
@@ -38,7 +42,7 @@
                     </select>
                     <button class="start-btn" @click="createAndStart" :disabled="loading || !topicInput.trim()">
                         <span v-if="loading" class="spinner"></span>
-                        <span v-else>🎤 开始辩论</span>
+                        <span v-else>开局</span>
                     </button>
                 </div>
             </div>
@@ -47,18 +51,18 @@
             <div class="flow-bar" v-if="debate">
                 <div class="flow-nodes">
                     <div class="flow-node" :class="flowClass('PRO')">
-                        <span class="flow-icon">⚖️</span>
-                        <span class="flow-label">正方</span>
+                        <span class="flow-icon">🟢</span>
+                        <span class="flow-label">支持队</span>
                     </div>
                     <div class="flow-arrow" :class="{active: debate.currentSpeaker === 'CON'}">→</div>
                     <div class="flow-node" :class="flowClass('CON')">
-                        <span class="flow-icon">⚔️</span>
-                        <span class="flow-label">反方</span>
+                        <span class="flow-icon">🔴</span>
+                        <span class="flow-label">反对队</span>
                     </div>
                     <div class="flow-arrow" :class="{active: debate.status === 'FINISHED' || debate.status === 'TERMINATED'}">→</div>
                     <div class="flow-node" :class="flowClass('JUDGE')">
-                        <span class="flow-icon">🏛️</span>
-                        <span class="flow-label">裁判</span>
+                        <span class="flow-icon">🏁</span>
+                        <span class="flow-label">裁判席</span>
                     </div>
                 </div>
                 <div class="flow-info">
@@ -68,18 +72,18 @@
                 <div class="flow-actions">
                     <button class="action-btn advance" v-if="debate.status === 'RUNNING'" @click="advance" :disabled="loading">
                         <span v-if="loading" class="spinner"></span>
-                        <span v-else>⏭ 下一轮</span>
+                        <span v-else>继续开麦</span>
                     </button>
                     <button class="action-btn terminate" v-if="debate.status === 'RUNNING'" @click="terminate" :disabled="loading">
-                        ⏹ 终止
+                        收摊
                     </button>
                     <button class="action-btn judge" v-if="(debate.status === 'FINISHED' || debate.status === 'TERMINATED') && !debate.judgeReport"
                             @click="judge" :disabled="loading">
                         <span v-if="loading" class="spinner"></span>
-                        <span v-else>⚖️ 裁判评审</span>
+                        <span v-else>宣布胜负</span>
                     </button>
                     <button class="action-btn new" v-if="debate.status !== 'RUNNING' && debate.status !== 'PENDING'" @click="reset">
-                        🔄 新辩论
+                        再开一局
                     </button>
                 </div>
             </div>
@@ -87,53 +91,83 @@
             <!-- 辩论对话区 -->
             <div class="chat-area" ref="chatArea" v-if="debate && (hasItems(messagesOf(debate)) || streaming)">
                 <div v-for="(msg, idx) in messagesOf(debate)" :key="msg.id || idx"
-                     class="message" :class="roleClass(msg.role)">
-                    <div class="msg-header">
-                        <span class="msg-icon">{{agentIcon(msg.role)}}</span>
-                        <span class="msg-role">{{agentName(msg.role)}}</span>
-                        <span class="msg-round">第{{msg.round}}轮</span>
+                     class="stage-line" :class="roleClass(msg.role)">
+                    <div class="speaker-avatar" :class="roleClass(msg.role)">
+                        <div class="avatar-head">
+                            <span class="avatar-face">{{avatarFace(msg.role)}}</span>
+                            <span class="avatar-hair"></span>
+                        </div>
+                        <div class="avatar-body"></div>
+                        <div class="avatar-name">{{agentName(msg.role)}}</div>
                     </div>
-                    <div class="msg-body" v-html="renderMd(msg.content)"></div>
+                    <div class="message speech-bubble" :class="roleClass(msg.role)">
+                        <div class="msg-header">
+                            <span class="msg-icon">{{agentIcon(msg.role)}}</span>
+                            <span class="msg-role">{{agentName(msg.role)}}</span>
+                            <span class="msg-round">第{{msg.round}}轮</span>
+                        </div>
+                        <div class="msg-body" v-html="renderMd(msg.content)"></div>
+                    </div>
                 </div>
 
                 <!-- 裁判报告 -->
-                <div v-if="debate.judgeReport" class="message judge report">
-                    <div class="msg-header">
-                        <span class="msg-icon">🏛️</span>
-                        <span class="msg-role">裁判评审报告</span>
+                <div v-if="debate.judgeReport" class="stage-line judge">
+                    <div class="speaker-avatar judge">
+                        <div class="avatar-head">
+                            <span class="avatar-face">😎</span>
+                            <span class="avatar-hair"></span>
+                        </div>
+                        <div class="avatar-body"></div>
+                        <div class="avatar-name">裁判席</div>
                     </div>
-                    <div class="msg-body" v-html="renderMd(debate.judgeReport)"></div>
+                    <div class="message judge report speech-bubble">
+                        <div class="msg-header">
+                            <span class="msg-icon">🏁</span>
+                            <span class="msg-role">裁判点评</span>
+                        </div>
+                        <div class="msg-body" v-html="renderMd(debate.judgeReport)"></div>
+                    </div>
                 </div>
 
                 <!-- 流式输出中 -->
-                <div v-if="streaming && (streamingContent || streamingThinking)" class="message" :class="roleClass(streamingRole)">
-                    <div class="msg-header">
-                        <span class="msg-icon">{{agentIcon(streamingRole)}}</span>
-                        <span class="msg-role">{{agentName(streamingRole)}}</span>
-                        <span class="msg-round" v-if="streamingRound > 0">第{{streamingRound}}轮</span>
-                        <span class="streaming-indicator">
-                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                        </span>
+                <div v-if="streaming && (streamingContent || streamingThinking)" class="stage-line streaming-line" :class="roleClass(streamingRole)">
+                    <div class="speaker-avatar" :class="roleClass(streamingRole)">
+                        <div class="avatar-head talking">
+                            <span class="avatar-face">{{avatarFace(streamingRole)}}</span>
+                            <span class="avatar-hair"></span>
+                        </div>
+                        <div class="avatar-body"></div>
+                        <div class="avatar-name">{{agentName(streamingRole)}}</div>
                     </div>
-                    <details class="thinking-panel" v-if="streamingThinking" open>
-                        <summary>思考过程</summary>
-                        <div class="thinking-body" v-html="renderMd(streamingThinking)"></div>
-                    </details>
-                    <div class="msg-body" v-if="streamingContent" v-html="renderMd(streamingContent)"></div>
+                    <div class="message speech-bubble" :class="roleClass(streamingRole)">
+                        <div class="msg-header">
+                            <span class="msg-icon">{{agentIcon(streamingRole)}}</span>
+                            <span class="msg-role">{{agentName(streamingRole)}}</span>
+                            <span class="msg-round" v-if="streamingRound > 0">第{{streamingRound}}轮</span>
+                            <span class="streaming-indicator">
+                                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                            </span>
+                        </div>
+                        <details class="thinking-panel" v-if="streamingThinking" open>
+                            <summary>思考过程</summary>
+                            <div class="thinking-body" v-html="renderMd(streamingThinking)"></div>
+                        </details>
+                        <div class="msg-body" v-if="streamingContent" v-html="renderMd(streamingContent)"></div>
+                    </div>
                 </div>
             </div>
 
             <!-- 空状态 -->
             <div class="empty-state" v-if="!debate">
-                <div class="empty-icon">⚔️</div>
-                <h2>AI 多智能体辩论台</h2>
-                <p>输入一个议题，让正反双方AI智能体展开精彩辩论，最终由裁判判定胜负！</p>
+                <div class="empty-icon">🎙️</div>
+                <h2>等你出题</h2>
+                <p>适合聊职场、城市生活、AI、买房、上班摸鱼这种接地气话题。</p>
             </div>
         </div>
 
         <!-- ====== 历史记录视图 ====== -->
         <div v-if="view === 'history'" class="history-view">
-            <h2 class="section-title">📜 历史辩论记录</h2>
+            <h2 class="section-title">往期战绩</h2>
             <div class="history-list" v-if="hasItems(historyList)">
                 <div class="history-card" v-for="item in historyList" :key="item.id" @click="loadDebate(item.id)">
                     <div class="card-topic">{{item.topic}}</div>
@@ -146,8 +180,8 @@
                 </div>
             </div>
             <div class="empty-state" v-else>
-                <div class="empty-icon">📭</div>
-                <p>暂无历史记录</p>
+                <div class="empty-icon">🧾</div>
+                <p>还没有开过局</p>
             </div>
         </div>
     </main>

@@ -51,9 +51,9 @@ public class ConAgent {
         context.append("本次辩论议题：").append(topic).append("\n\n");
 
         if (history.isEmpty()) {
-            context.append("正方已经发表了开场立论，请你作为反方进行反驳。");
+            context.append("支持队已经开麦了，请你作为反对队接着反驳。用大白话，抓一个最明显的问题讲透。");
         } else {
-            context.append("以下是之前的辩论记录，请针对正方的最新观点进行反驳，同时提出新的反论据：\n\n");
+            context.append("以下是之前的辩论记录，请接住支持队最新观点，用接地气的话反击，再给一个普通人能懂的反例：\n\n");
             for (DebateMessage msg : history) {
                 String roleName = "JUDGE".equals(msg.getRole()) ? "裁判" :
                         "PRO".equals(msg.getRole()) ? "正方" : "反方";
@@ -62,6 +62,7 @@ public class ConAgent {
             }
         }
 
+        context.append("要求：120-220字，短句，像朋友聊天，最多讲3个点，结尾来一句好记的反击。");
         messages.add(new UserMessage(context.toString()));
         return messages;
     }

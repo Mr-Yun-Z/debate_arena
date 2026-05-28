@@ -50,9 +50,9 @@ public class ProAgent {
         context.append("本次辩论议题：").append(topic).append("\n\n");
 
         if (history.isEmpty()) {
-            context.append("这是第一轮辩论，请你作为正方先发言，为议题立论。");
+            context.append("这是第一轮辩论，请你作为支持队先开麦。用大白话说清楚，别端着，别写论文。");
         } else {
-            context.append("以下是之前的辩论记录，请针对反方的最新观点进行反驳，同时提出新的论据：\n\n");
+            context.append("以下是之前的辩论记录，请接住反对队最新观点，用接地气的话反击，再补一个新的现实例子：\n\n");
             for (DebateMessage msg : history) {
                 String roleName = "JUDGE".equals(msg.getRole()) ? "裁判" :
                         "PRO".equals(msg.getRole()) ? "正方" : "反方";
@@ -61,6 +61,7 @@ public class ProAgent {
             }
         }
 
+        context.append("要求：120-220字，短句，像朋友聊天，最多讲3个点，结尾来一句好记的话。");
         messages.add(new UserMessage(context.toString()));
         return messages;
     }

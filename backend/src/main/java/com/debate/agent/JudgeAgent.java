@@ -48,7 +48,7 @@ public class JudgeAgent {
 
         StringBuilder context = new StringBuilder();
         context.append("本次辩论议题：").append(topic).append("\n\n");
-        context.append("以下是本场辩论的完整记录，请进行评审：\n\n");
+        context.append("以下是本场辩论的完整记录，请像综艺裁判一样点评：公平、好懂、有点节目效果，不要写学术报告。\n\n");
 
         for (DebateMessage msg : history) {
             String roleName = "PRO".equals(msg.getRole()) ? "正方" : "反方";

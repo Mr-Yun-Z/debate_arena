@@ -301,11 +301,15 @@ createApp({
 
         // ===== 辅助函数 =====
         function agentIcon(role) {
-            return { PRO: '⚖️', CON: '⚔️', JUDGE: '🏛️' }[role] || '💬';
+            return { PRO: '🟢', CON: '🔴', JUDGE: '🏁' }[role] || '💬';
         }
 
         function agentName(role) {
-            return { PRO: '正方辩手', CON: '反方辩手', JUDGE: '裁判' }[role] || role;
+            return { PRO: '支持队', CON: '反对队', JUDGE: '裁判席' }[role] || role;
+        }
+
+        function avatarFace(role) {
+            return { PRO: '＾▽＾', CON: '｀へ´', JUDGE: '・∀・' }[role] || '・ω・';
         }
 
         function roleClass(role) {
@@ -325,7 +329,7 @@ createApp({
         }
 
         function statusText(status) {
-            return { PENDING: '待开始', RUNNING: '辩论中', FINISHED: '已结束', TERMINATED: '已终止' }[status] || status;
+            return { PENDING: '待开局', RUNNING: '开麦中', FINISHED: '已打完', TERMINATED: '已收摊' }[status] || status;
         }
 
         function flowClass(role) {
@@ -356,7 +360,7 @@ createApp({
             streaming, streamingRole, streamingContent, streamingThinking, streamingRound,
             createAndStart, advance, terminate, judge, reset,
             loadHistory, loadDebate, deleteDebate,
-            agentIcon, agentName, roleClass, statusClass, hasItems, messagesOf,
+            agentIcon, agentName, avatarFace, roleClass, statusClass, hasItems, messagesOf,
             statusText, flowClass, renderMd, formatTime
         };
     }
