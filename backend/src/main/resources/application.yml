@@ -1,0 +1,36 @@
+server:
+  port: 8080
+
+spring:
+  # ========== 数据源配置 ==========
+  datasource:
+    url: jdbc:mysql://localhost:3306/debate_arena?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&createDatabaseIfNotExist=true
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # ========== JPA 配置 ==========
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+
+  # ========== AI 模型配置 (Anthropic) ==========
+  ai:
+    anthropic:
+      base-url: https://token-plan-cn.xiaomimimo.com/anthropic
+      api-key: tp-cnnkvmrlsfdf3nc8clvtyhmz7oyfoj8objtvquohhj3ok7lw
+      chat:
+        options:
+          model: mimo-v2-pro
+          temperature: 0.7
+
+# ========== 应用自定义配置 ==========
+app:
+  debate:
+    max-rounds: 5
+    max-response-tokens: 1000

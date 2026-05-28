@@ -1,0 +1,18 @@
+# IDE
+.idea/
+*.iml
+
+# Claude
+.claude/
+
+# Maven
+backend/target/
+
+# Java
+*.class
+*.jar
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

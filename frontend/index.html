@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 多智能体辩论台</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+<div id="app">
+    <!-- ===== 顶部导航 ===== -->
+    <header class="header">
+        <div class="header-left">
+            <span class="logo-icon">🏛️</span>
+            <h1>AI 辩论台</h1>
+        </div>
+        <nav class="header-nav">
+            <button class="nav-btn" :class="{active: view === 'arena'}" @click="view = 'arena'">⚔️ 辩论场</button>
+            <button class="nav-btn" :class="{active: view === 'history'}" @click="loadHistory(); view = 'history'">📜 历史记录</button>
+        </nav>
+    </header>
+
+    <!-- ===== 主内容 ===== -->
+    <main class="main">
+        <!-- ====== 辩论场视图 ====== -->
+        <div v-if="view === 'arena'" class="arena-view">
+            <!-- 顶部：议题输入 -->
+            <div class="topic-bar" v-if="!debate">
+                <div class="topic-input-group">
+                    <input v-model="topicInput" class="topic-input" placeholder="输入辩论议题，例如：人工智能是否会取代人类工作？"
+                           @keyup.enter="createAndStart" maxlength="500">
+                    <select v-model.number="maxRounds" class="rounds-select">
+                        <option :value="3">3轮</option>
+                        <option :value="5">5轮</option>
+                        <option :value="7">7轮</option>
+                        <option :value="10">10轮</option>
+                    </select>
+                    <button class="start-btn" @click="createAndStart" :disabled="loading || !topicInput.trim()">
+                        <span v-if="loading" class="spinner"></span>
+                        <span v-else>🎤 开始辩论</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 状态流程图 -->
+            <div class="flow-bar" v-if="debate">
+                <div class="flow-nodes">
+                    <div class="flow-node" :class="flowClass('PRO')">
+                        <span class="flow-icon">⚖️</span>
+                        <span class="flow-label">正方</span>
+                    </div>
+                    <div class="flow-arrow" :class="{active: debate.currentSpeaker === 'CON'}">→</div>
+                    <div class="flow-node" :class="flowClass('CON')">
+                        <span class="flow-icon">⚔️</span>
+                        <span class="flow-label">反方</span>
+                    </div>
+                    <div class="flow-arrow" :class="{active: debate.status === 'FINISHED' || debate.status === 'TERMINATED'}">→</div>
+                    <div class="flow-node" :class="flowClass('JUDGE')">
+                        <span class="flow-icon">🏛️</span>
+                        <span class="flow-label">裁判</span>
+                    </div>
+                </div>
+                <div class="flow-info">
+                    <span class="round-badge">第 {{debate.currentRound}} / {{debate.maxRounds}} 轮</span>
+                    <span class="status-badge" :class="debate.status.toLowerCase()">{{statusText(debate.status)}}</span>
+                </div>
+                <div class="flow-actions">
+                    <button class="action-btn advance" v-if="debate.status === 'RUNNING'" @click="advance" :disabled="loading">
+                        <span v-if="loading" class="spinner"></span>
+                        <span v-else>⏭ 下一轮</span>
+                    </button>
+                    <button class="action-btn terminate" v-if="debate.status === 'RUNNING'" @click="terminate" :disabled="loading">
+                        ⏹ 终止
+                    </button>
+                    <button class="action-btn judge" v-if="(debate.status === 'FINISHED' || debate.status === 'TERMINATED') && !debate.judgeReport"
+                            @click="judge" :disabled="loading">
+                        <span v-if="loading" class="spinner"></span>
+                        <span v-else>⚖️ 裁判评审</span>
+                    </button>
+                    <button class="action-btn new" v-if="debate.status !== 'RUNNING' && debate.status !== 'PENDING'" @click="reset">
+                        🔄 新辩论
+                    </button>
+                </div>
+            </div>
+
+            <!-- 辩论对话区 -->
+            <div class="chat-area" ref="chatArea" v-if="debate && debate.messages.length > 0">
+                <div v-for="(msg, idx) in debate.messages" :key="msg.id"
+                     class="message" :class="msg.role.toLowerCase()">
+                    <div class="msg-header">
+                        <span class="msg-icon">{{agentIcon(msg.role)}}</span>
+                        <span class="msg-role">{{agentName(msg.role)}}</span>
+                        <span class="msg-round">第{{msg.round}}轮</span>
+                    </div>
+                    <div class="msg-body" v-html="renderMd(msg.content)"></div>
+                </div>
+
+                <!-- 裁判报告 -->
+                <div v-if="debate.judgeReport" class="message judge report">
+                    <div class="msg-header">
+                        <span class="msg-icon">🏛️</span>
+                        <span class="msg-role">裁判评审报告</span>
+                    </div>
+                    <div class="msg-body" v-html="renderMd(debate.judgeReport)"></div>
+                </div>
+
+                <!-- 流式输出中 -->
+                <div v-if="streaming && streamingContent" class="message" :class="streamingRole.toLowerCase()">
+                    <div class="msg-header">
+                        <span class="msg-icon">{{agentIcon(streamingRole)}}</span>
+                        <span class="msg-role">{{agentName(streamingRole)}}</span>
+                        <span class="msg-round" v-if="streamingRound > 0">第{{streamingRound}}轮</span>
+                        <span class="streaming-indicator">
+                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                        </span>
+                    </div>
+                    <div class="msg-body" v-html="renderMd(streamingContent)"></div>
+                </div>
+            </div>
+
+            <!-- 空状态 -->
+            <div class="empty-state" v-if="!debate">
+                <div class="empty-icon">⚔️</div>
+                <h2>AI 多智能体辩论台</h2>
+                <p>输入一个议题，让正反双方AI智能体展开精彩辩论，最终由裁判判定胜负！</p>
+            </div>
+        </div>
+
+        <!-- ====== 历史记录视图 ====== -->
+        <div v-if="view === 'history'" class="history-view">
+            <h2 class="section-title">📜 历史辩论记录</h2>
+            <div class="history-list" v-if="historyList.length > 0">
+                <div class="history-card" v-for="item in historyList" :key="item.id" @click="loadDebate(item.id)">
+                    <div class="card-topic">{{item.topic}}</div>
+                    <div class="card-meta">
+                        <span class="status-badge" :class="item.status.toLowerCase()">{{statusText(item.status)}}</span>
+                        <span class="card-rounds">{{item.currentRound}}/{{item.maxRounds}} 轮</span>
+                        <span class="card-time">{{formatTime(item.createdAt)}}</span>
+                    </div>
+                    <button class="card-delete" @click.stop="deleteDebate(item.id)" title="删除">✕</button>
+                </div>
+            </div>
+            <div class="empty-state" v-else>
+                <div class="empty-icon">📭</div>
+                <p>暂无历史记录</p>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
