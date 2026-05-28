@@ -1,6 +1,7 @@
 package com.debate.service;
 
 import com.debate.agent.ConAgent;
+import com.debate.agent.AgentStreamChunk;
 import com.debate.agent.JudgeAgent;
 import com.debate.agent.ProAgent;
 import com.debate.dto.DebateDTOs.*;
@@ -11,6 +12,7 @@ import com.debate.entity.DebateMessage;
 import com.debate.repository.AgentConfigRepository;
 import com.debate.repository.DebateMessageRepository;
 import com.debate.repository.DebateRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +37,7 @@ public class DebateService {
     private final ProAgent proAgent;
     private final ConAgent conAgent;
     private final JudgeAgent judgeAgent;
+    private final ObjectMapper objectMapper;
 
     @Value("${app.debate.max-rounds:5}")
     private int defaultMaxRounds;
@@ -179,16 +182,19 @@ public class DebateService {
     /** 流式开始辩论：正方发言 → 保存 → 返回完整 DebateResponse */
     @Transactional
     public Flux<ServerSentEvent<String>> streamStartDebate(Long debateId) {
+        // 获取辩论
         Debate debate = getDebate(debateId);
         if (debate.getStatus() != DebateStatus.PENDING) {
             return Flux.error(new RuntimeException("辩论已开始或已结束"));
         }
 
+        // 更新状态 & 当前轮次
         debate.setStatus(DebateStatus.RUNNING);
         debate.setCurrentRound(1);
         debate.setCurrentSpeaker("PRO");
         debateRepository.save(debate);
 
+        // 生成正方发言
         AgentConfig proConfig = agentConfigRepository.findByRole("PRO").orElseThrow();
         List<DebateMessage> history = messageRepository.findByDebateIdOrderBySequenceAsc(debateId);
 
@@ -196,14 +202,21 @@ public class DebateService {
 
         return proAgent.streamGenerate(debate.getTopic(), proConfig, history)
                 .map(chunk -> {
-                    contentRef.get().append(chunk);
-                    return ServerSentEvent.<String>builder()
-                            .event("token")
-                            .data("{\"role\":\"PRO\",\"content\":" + toJsonString(chunk) + "}")
-                            .build();
+                    if (chunk.isAnswer()) {
+                        contentRef.get().append(chunk.content());
+                    }
+                    return toStreamEvent("PRO", chunk);
                 })
                 .concatWith(Mono.defer(() -> {
                     String fullContent = contentRef.get().toString();
+                    if (fullContent.isBlank()) {
+                        debate.setStatus(DebateStatus.PENDING);
+                        debate.setCurrentRound(0);
+                        debate.setCurrentSpeaker(null);
+                        debateRepository.save(debate);
+                        log.warn("流式开始辩论未收到正式回答, id={}", debateId);
+                        return Mono.just(errorEvent("模型只返回了思考过程，没有返回正式回答。请提高 max-tokens 后重试。"));
+                    }
                     saveMessage(debate, "PRO", 1, fullContent);
                     debate.setCurrentSpeaker("CON");
                     debateRepository.save(debate);
@@ -243,17 +256,20 @@ public class DebateService {
         Flux<ServerSentEvent<String>> conStream = conAgent.streamGenerate(
                 debate.getTopic(), conConfig, history)
                 .map(chunk -> {
-                    conContentRef.get().append(chunk);
-                    return ServerSentEvent.<String>builder()
-                            .event("token")
-                            .data("{\"role\":\"CON\",\"content\":" + toJsonString(chunk) + "}")
-                            .build();
+                    if (chunk.isAnswer()) {
+                        conContentRef.get().append(chunk.content());
+                    }
+                    return toStreamEvent("CON", chunk);
                 });
 
         // 反方结束后决定是否继续
         return conStream.concatWith(Flux.defer(() -> {
             Debate d = getDebate(debateId);
             String conContent = conContentRef.get().toString();
+            if (conContent.isBlank()) {
+                log.warn("反方流式发言未收到正式回答, id={}", debateId);
+                return Flux.just(errorEvent("模型只返回了思考过程，没有返回正式回答。请提高 max-tokens 后重试。"));
+            }
             saveMessage(d, "CON", d.getCurrentRound(), conContent);
             log.info("反方已发言(流式), 长度={}", conContent.length());
 
@@ -281,11 +297,10 @@ public class DebateService {
             Flux<ServerSentEvent<String>> proStream = proAgent.streamGenerate(
                     d.getTopic(), proConfig, proHistory)
                     .map(chunk -> {
-                        proContentRef.get().append(chunk);
-                        return ServerSentEvent.<String>builder()
-                                .event("token")
-                                .data("{\"role\":\"PRO\",\"content\":" + toJsonString(chunk) + "}")
-                                .build();
+                        if (chunk.isAnswer()) {
+                            proContentRef.get().append(chunk.content());
+                        }
+                        return toStreamEvent("PRO", chunk);
                     });
 
             ServerSentEvent<String> speakerEvent = ServerSentEvent.<String>builder()
@@ -298,6 +313,10 @@ public class DebateService {
                     Mono.defer(() -> {
                         String proContent = proContentRef.get().toString();
                         Debate dd = getDebate(debateId);
+                        if (proContent.isBlank()) {
+                            log.warn("正方流式发言未收到正式回答, id={}, round={}", debateId, nextRound);
+                            return Mono.just(errorEvent("模型只返回了思考过程，没有返回正式回答。请提高 max-tokens 后重试。"));
+                        }
                         saveMessage(dd, "PRO", nextRound, proContent);
                         dd.setCurrentSpeaker("CON");
                         debateRepository.save(dd);
@@ -339,14 +358,17 @@ public class DebateService {
 
         return judgeAgent.streamGenerate(debate.getTopic(), judgeConfig, history)
                 .map(chunk -> {
-                    contentRef.get().append(chunk);
-                    return ServerSentEvent.<String>builder()
-                            .event("token")
-                            .data("{\"role\":\"JUDGE\",\"content\":" + toJsonString(chunk) + "}")
-                            .build();
+                    if (chunk.isAnswer()) {
+                        contentRef.get().append(chunk.content());
+                    }
+                    return toStreamEvent("JUDGE", chunk);
                 })
                 .concatWith(Mono.defer(() -> {
                     String fullContent = contentRef.get().toString();
+                    if (fullContent.isBlank()) {
+                        log.warn("裁判流式评审未收到正式回答, id={}", debateId);
+                        return Mono.just(errorEvent("模型只返回了思考过程，没有返回正式回答。请提高 max-tokens 后重试。"));
+                    }
                     Debate d = getDebate(debateId);
                     d.setJudgeReport(fullContent);
                     d.setCurrentSpeaker(null);
@@ -432,16 +454,33 @@ public class DebateService {
 
     private String toJson(Object obj) {
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(obj);
+            return objectMapper.writeValueAsString(obj);
         } catch (Exception e) {
+            log.error("JSON 序列化失败", e);
             return "{}";
         }
     }
 
+    private ServerSentEvent<String> toStreamEvent(String role, AgentStreamChunk chunk) {
+        String event = chunk.isThinking() ? "thinking" : "token";
+        return ServerSentEvent.<String>builder()
+                .event(event)
+                .data("{\"role\":\"" + role + "\",\"content\":" + toJsonString(chunk.content()) + "}")
+                .build();
+    }
+
+    private ServerSentEvent<String> errorEvent(String message) {
+        return ServerSentEvent.<String>builder()
+                .event("error")
+                .data(message)
+                .build();
+    }
+
     private String toJsonString(String text) {
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(text);
+            return objectMapper.writeValueAsString(text);
         } catch (Exception e) {
+            log.error("JSON 字符串序列化失败", e);
             return "\"\"";
         }
     }

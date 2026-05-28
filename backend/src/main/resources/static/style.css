@@ -221,6 +221,25 @@ body {
 .msg-body ul, .msg-body ol { padding-left: 20px; margin: 6px 0; }
 .msg-body strong { color: #fff; }
 .msg-body code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+.thinking-panel {
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.04);
+}
+.thinking-panel summary {
+    padding: 10px 18px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+}
+.thinking-body {
+    padding: 0 18px 14px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+}
+.thinking-body p { margin: 5px 0; }
 
 /* ========== 流式输出指示器 ========== */
 .streaming-indicator {

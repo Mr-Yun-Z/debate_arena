@@ -63,7 +63,7 @@
                 </div>
                 <div class="flow-info">
                     <span class="round-badge">第 {{debate.currentRound}} / {{debate.maxRounds}} 轮</span>
-                    <span class="status-badge" :class="debate.status.toLowerCase()">{{statusText(debate.status)}}</span>
+                    <span class="status-badge" :class="statusClass(debate.status)">{{statusText(debate.status)}}</span>
                 </div>
                 <div class="flow-actions">
                     <button class="action-btn advance" v-if="debate.status === 'RUNNING'" @click="advance" :disabled="loading">
@@ -85,9 +85,9 @@
             </div>
 
             <!-- 辩论对话区 -->
-            <div class="chat-area" ref="chatArea" v-if="debate && debate.messages.length > 0">
-                <div v-for="(msg, idx) in debate.messages" :key="msg.id"
-                     class="message" :class="msg.role.toLowerCase()">
+            <div class="chat-area" ref="chatArea" v-if="debate && (hasItems(messagesOf(debate)) || streaming)">
+                <div v-for="(msg, idx) in messagesOf(debate)" :key="msg.id || idx"
+                     class="message" :class="roleClass(msg.role)">
                     <div class="msg-header">
                         <span class="msg-icon">{{agentIcon(msg.role)}}</span>
                         <span class="msg-role">{{agentName(msg.role)}}</span>
@@ -106,7 +106,7 @@
                 </div>
 
                 <!-- 流式输出中 -->
-                <div v-if="streaming && streamingContent" class="message" :class="streamingRole.toLowerCase()">
+                <div v-if="streaming && (streamingContent || streamingThinking)" class="message" :class="roleClass(streamingRole)">
                     <div class="msg-header">
                         <span class="msg-icon">{{agentIcon(streamingRole)}}</span>
                         <span class="msg-role">{{agentName(streamingRole)}}</span>
@@ -115,7 +115,11 @@
                             <span class="dot"></span><span class="dot"></span><span class="dot"></span>
                         </span>
                     </div>
-                    <div class="msg-body" v-html="renderMd(streamingContent)"></div>
+                    <details class="thinking-panel" v-if="streamingThinking" open>
+                        <summary>思考过程</summary>
+                        <div class="thinking-body" v-html="renderMd(streamingThinking)"></div>
+                    </details>
+                    <div class="msg-body" v-if="streamingContent" v-html="renderMd(streamingContent)"></div>
                 </div>
             </div>
 
@@ -130,11 +134,11 @@
         <!-- ====== 历史记录视图 ====== -->
         <div v-if="view === 'history'" class="history-view">
             <h2 class="section-title">📜 历史辩论记录</h2>
-            <div class="history-list" v-if="historyList.length > 0">
+            <div class="history-list" v-if="hasItems(historyList)">
                 <div class="history-card" v-for="item in historyList" :key="item.id" @click="loadDebate(item.id)">
                     <div class="card-topic">{{item.topic}}</div>
                     <div class="card-meta">
-                        <span class="status-badge" :class="item.status.toLowerCase()">{{statusText(item.status)}}</span>
+                        <span class="status-badge" :class="statusClass(item.status)">{{statusText(item.status)}}</span>
                         <span class="card-rounds">{{item.currentRound}}/{{item.maxRounds}} 轮</span>
                         <span class="card-time">{{formatTime(item.createdAt)}}</span>
                     </div>

@@ -26,7 +26,8 @@ public class ProAgent {
     public String generate(String topic, AgentConfig config, List<DebateMessage> history) {
         List<Message> messages = buildPrompt(topic, config, history);
         try {
-            String response = chatModel.call(new Prompt(messages)).getResult().getOutput().getText();
+            ChatResponse chatResponse = chatModel.call(new Prompt(messages));
+            String response = AgentResponseUtils.answerText(chatResponse);
             log.info("[正方辩手] 生成发言成功，长度: {}", response.length());
             return response;
         } catch (Exception e) {
@@ -35,12 +36,10 @@ public class ProAgent {
         }
     }
 
-    public Flux<String> streamGenerate(String topic, AgentConfig config, List<DebateMessage> history) {
+    public Flux<AgentStreamChunk> streamGenerate(String topic, AgentConfig config, List<DebateMessage> history) {
         List<Message> messages = buildPrompt(topic, config, history);
         return chatModel.stream(new Prompt(messages))
-                .filter(resp -> resp.getResult() != null && resp.getResult().getOutput() != null)
-                .map(resp -> resp.getResult().getOutput().getText())
-                .filter(text -> text != null && !text.isEmpty());
+                .flatMapIterable(AgentResponseUtils::toChunks);
     }
 
     private List<Message> buildPrompt(String topic, AgentConfig config, List<DebateMessage> history) {

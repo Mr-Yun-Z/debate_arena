@@ -16,6 +16,7 @@ createApp({
         const streaming = ref(false);
         const streamingRole = ref('');
         const streamingContent = ref('');
+        const streamingThinking = ref('');
         const streamingRound = ref(0);
 
         // ===== API 封装 =====
@@ -90,6 +91,17 @@ createApp({
             });
         }
 
+        function parseDebatePayload(data) {
+            const parsed = JSON.parse(data);
+            if (!parsed || !parsed.id) {
+                throw new Error('后端返回的辩论数据为空或格式不完整');
+            }
+            if (!Array.isArray(parsed.messages)) {
+                parsed.messages = [];
+            }
+            return parsed;
+        }
+
         // ===== 核心操作（流式） =====
         async function createAndStart() {
             if (!topicInput.value.trim()) return;
@@ -108,17 +120,23 @@ createApp({
                 streaming.value = true;
                 streamingRole.value = 'PRO';
                 streamingContent.value = '';
+                streamingThinking.value = '';
                 streamingRound.value = 1;
 
                 const stream = await streamApi(`/${created.id}/stream/start`);
                 for await (const evt of stream) {
-                    if (evt.event === 'token') {
+                    if (evt.event === 'thinking') {
+                        const parsed = JSON.parse(evt.data);
+                        if (parsed.role) streamingRole.value = parsed.role;
+                        streamingThinking.value += parsed.content;
+                        scrollToBottom();
+                    } else if (evt.event === 'token') {
                         const parsed = JSON.parse(evt.data);
                         if (parsed.role) streamingRole.value = parsed.role;
                         streamingContent.value += parsed.content;
                         scrollToBottom();
                     } else if (evt.event === 'done') {
-                        debate.value = JSON.parse(evt.data);
+                        debate.value = parseDebatePayload(evt.data);
                     } else if (evt.event === 'error') {
                         throw new Error(evt.data);
                     }
@@ -126,6 +144,10 @@ createApp({
 
                 streaming.value = false;
                 scrollToBottom();
+
+                if (debate.value?.status === 'RUNNING' && debate.value?.currentSpeaker === 'CON') {
+                    await advance();
+                }
             } catch (e) {
                 streaming.value = false;
                 alert('创建失败: ' + e.message);
@@ -143,6 +165,7 @@ createApp({
                 streaming.value = true;
                 streamingRole.value = 'CON';
                 streamingContent.value = '';
+                streamingThinking.value = '';
                 streamingRound.value = currentRound;
 
                 const stream = await streamApi(`/${debate.value.id}/stream/advance`);
@@ -152,13 +175,18 @@ createApp({
                         const parsed = JSON.parse(evt.data);
                         streamingRole.value = parsed.role;
                         streamingContent.value = '';
+                        streamingThinking.value = '';
                         streamingRound.value = parsed.round || (parsed.role === 'PRO' ? currentRound + 1 : currentRound);
+                    } else if (evt.event === 'thinking') {
+                        const parsed = JSON.parse(evt.data);
+                        streamingThinking.value += parsed.content;
+                        scrollToBottom();
                     } else if (evt.event === 'token') {
                         const parsed = JSON.parse(evt.data);
                         streamingContent.value += parsed.content;
                         scrollToBottom();
                     } else if (evt.event === 'done') {
-                        debate.value = JSON.parse(evt.data);
+                        debate.value = parseDebatePayload(evt.data);
                     } else if (evt.event === 'error') {
                         throw new Error(evt.data);
                     }
@@ -166,6 +194,10 @@ createApp({
 
                 streaming.value = false;
                 scrollToBottom();
+
+                if (debate.value?.status === 'RUNNING' && debate.value?.currentSpeaker === 'CON') {
+                    await advance();
+                }
             } catch (e) {
                 streaming.value = false;
                 alert('推进失败: ' + e.message);
@@ -194,16 +226,21 @@ createApp({
                 streaming.value = true;
                 streamingRole.value = 'JUDGE';
                 streamingContent.value = '';
+                streamingThinking.value = '';
                 streamingRound.value = 0;
 
                 const stream = await streamApi(`/${debate.value.id}/stream/judge`);
                 for await (const evt of stream) {
-                    if (evt.event === 'token') {
+                    if (evt.event === 'thinking') {
+                        const parsed = JSON.parse(evt.data);
+                        streamingThinking.value += parsed.content;
+                        scrollToBottom();
+                    } else if (evt.event === 'token') {
                         const parsed = JSON.parse(evt.data);
                         streamingContent.value += parsed.content;
                         scrollToBottom();
                     } else if (evt.event === 'done') {
-                        debate.value = JSON.parse(evt.data);
+                        debate.value = parseDebatePayload(evt.data);
                     } else if (evt.event === 'error') {
                         throw new Error(evt.data);
                     }
@@ -224,6 +261,7 @@ createApp({
             topicInput.value = '';
             streaming.value = false;
             streamingContent.value = '';
+            streamingThinking.value = '';
         }
 
         async function loadHistory() {
@@ -270,6 +308,22 @@ createApp({
             return { PRO: '正方辩手', CON: '反方辩手', JUDGE: '裁判' }[role] || role;
         }
 
+        function roleClass(role) {
+            return role ? role.toLowerCase() : '';
+        }
+
+        function statusClass(status) {
+            return status ? status.toLowerCase() : '';
+        }
+
+        function hasItems(value) {
+            return Array.isArray(value) && value.length > 0;
+        }
+
+        function messagesOf(value) {
+            return Array.isArray(value?.messages) ? value.messages : [];
+        }
+
         function statusText(status) {
             return { PENDING: '待开始', RUNNING: '辩论中', FINISHED: '已结束', TERMINATED: '已终止' }[status] || status;
         }
@@ -299,10 +353,11 @@ createApp({
 
         return {
             view, debate, historyList, topicInput, maxRounds, loading, chatArea,
-            streaming, streamingRole, streamingContent, streamingRound,
+            streaming, streamingRole, streamingContent, streamingThinking, streamingRound,
             createAndStart, advance, terminate, judge, reset,
             loadHistory, loadDebate, deleteDebate,
-            agentIcon, agentName, statusText, flowClass, renderMd, formatTime
+            agentIcon, agentName, roleClass, statusClass, hasItems, messagesOf,
+            statusText, flowClass, renderMd, formatTime
         };
     }
 }).mount('#app');

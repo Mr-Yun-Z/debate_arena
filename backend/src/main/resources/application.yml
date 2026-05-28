@@ -28,6 +28,7 @@ spring:
         options:
           model: mimo-v2-pro
           temperature: 0.7
+          max-tokens: 4096
 
 # ========== 应用自定义配置 ==========
 app:
